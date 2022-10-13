@@ -51,6 +51,9 @@ bool modo; // Só pode tomar valores de 1 ou 0
 // Blink mode
 int j = 0;
 
+// Fade control
+int brilho, fade_amount;
+
 // Set new state - função
 void set_state(fsm_t& fsm, int new_state)
 {
@@ -98,6 +101,9 @@ void setup() {
 
   k = 6;
   k2 = 6;
+  // Fade -> j == 2;
+  brilho = 255;
+  fade_amount = (blink_rate/10)/256;
 }
 
 void loop() {
@@ -247,7 +253,8 @@ void loop() {
           i++;} else i = 0;
         blink_rate = gama_intervalos[i]; // atualiza o tempo da ampulheta
       } else if (fsm4.state == 2 && S2 && !prevS2){
-        j++;
+        if(j<2){
+          j++;} else j = 0;
       } else if (fsm4.state == 3 && S2 && !prevS2){
         modo = !modo;
       } 
@@ -288,14 +295,15 @@ void loop() {
 
       // A more compact way
       //if(fsm4.state == 0){
-        LED_1 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 1 && (fsm4.state == 0));
-        LED_2 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 2 && (fsm4.state == 0));
-        LED_3 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 3 && (fsm4.state == 0));
-        LED_4 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 4 && (fsm4.state == 0));
-        LED_5 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 5 && (fsm4.state == 0));
-        LED_6 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 6 && (fsm4.state == 0));
-        LED_7 = ((fsm2.state == 4) && (modo == 0));
+      LED_1 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 1 && (fsm4.state == 0));
+      LED_2 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 2 && (fsm4.state == 0));
+      LED_3 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 3 && (fsm4.state == 0));
+      LED_4 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 4 && (fsm4.state == 0));
+      LED_5 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 5 && (fsm4.state == 0));
+      LED_6 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 6 && (fsm4.state == 0));
+      LED_7 = ((fsm2.state == 4) && (modo == 0));
       //}
+
       // MODO DE TERMINAR ALTERNATIVO
       if (fsm2.state == 4 && modo == 1){
         if(fsm2.tis - flash_time2 > 100 && k2>0){
@@ -319,12 +327,36 @@ void loop() {
       // LED_2 = (fsm2.state == 0);
 
       // Set the outputs
-      digitalWrite(LED1, LED_1);
-      digitalWrite(LED2, LED_2);
-      digitalWrite(LED3, LED_3);
-      digitalWrite(LED4, LED_4);
-      digitalWrite(LED5, LED_5);
-      digitalWrite(LED6, LED_6);
+      // Modo de contagem 1
+
+      // Modo de contagem 3
+      if(j==2 && fsm2.state == 1){
+        brilho -= fade_amount; // reduz luminosidade
+        if(brilho <0){
+          brilho = 0; //não vai a valores negativos
+        }
+      }
+
+      // Modos de fade 1 e 3
+      if(j==2 && k == 1){
+        analogWrite(LED1, brilho);
+      } else digitalWrite(LED1, LED_1);
+      if(j==2 && k == 2){
+        analogWrite(LED2, brilho);
+      } else digitalWrite(LED2, LED_2);
+      if(j==2 && k == 3){
+        analogWrite(LED3, brilho);
+      } else digitalWrite(LED3, LED_3);
+      if(j==2 && k == 4){
+        analogWrite(LED4, brilho);
+      } else digitalWrite(LED4, LED_4);
+      if(j==2 && k == 5){
+        analogWrite(LED5, brilho);
+      } else digitalWrite(LED5, LED_5);
+      if(j==2 && k == 6){
+        analogWrite(LED6, brilho);
+      } else digitalWrite(LED6, LED_6);
+
       digitalWrite(LED7, LED_7);
 
       // Debug using the serial port
