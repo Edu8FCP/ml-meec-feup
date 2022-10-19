@@ -41,7 +41,7 @@ uint8_t S2, prevS2;
 uint8_t LED_1, LED_2, LED_3, LED_4, LED_5, LED_6, LED_7;
 
 // Our finite state machines
-fsm_t fsm1, fsm2, fsm3, fsm4, fsm5;
+fsm_t fsm1, fsm2, fsm3, fsm4, fsm5, fsm6;
 
 unsigned long interval, last_cycle, last_cycle1, interval_print;
 unsigned long loop_micros;
@@ -52,14 +52,15 @@ int k = 0;
 int k2 = 0;
 
 // Gama de tempos
-int i = 0;
+int i = 1; // começa em 1 porque o tempo começa em 2000
 int gama_intervalos[4] = {1000, 2000, 4000, 8000};
 bool modo; // Só pode tomar valores de 1 ou 0
 // Blink mode
 int j;
 
 // Fade control
-int brilho, fade_amount;
+int brilho;
+int fade_amount;
 
 // Set new state - função
 void set_state(fsm_t &fsm, int new_state)
@@ -99,20 +100,21 @@ void setup()
 	Serial.begin(115200);
 
 	interval = 10; // só vamos fazer leituras de 10 em 10 ms para evitar os efeitos de bounce e assim dos botões
-	blink_rate = gama_intervalos[1];
+	blink_rate = gama_intervalos[i];
 	modo = 0;
-	interval_print = 500;
+	//interval_print = 500;
 	set_state(fsm1, 0);
 	set_state(fsm2, 0);
 	set_state(fsm3, 0);
 	set_state(fsm4, 0);
     set_state(fsm5, 0);
+	set_state(fsm6, 0);
 
 	k = 6; // CONTAR CRONÓMETROS
 	k2 = 6; // FINAL ALTERNATIVO
 	j = 0; // FADE
 	brilho = 255; // INTENSIDADE DE BRILHO
-	fade_amount = ((blink_rate / 10) / 256) + 2; // VARIABILIDADE DO BRILHO
+	fade_amount = ((blink_rate / 10) / 256) + 1; // VARIABILIDADE DO BRILHO
 }
 
 /*********************************
@@ -149,6 +151,7 @@ void loop()
 		fsm3.tis = cur_time - fsm3.tes;
 		fsm4.tis = cur_time - fsm4.tes;
         fsm5.tis = cur_time - fsm5.tes;
+		fsm6.tis = cur_time - fsm6.tes;
 
 		// Ex2 -> "ganhar tempo" - FSM1
 
@@ -157,27 +160,30 @@ void loop()
        *            GANHAR TEMPO              *
        *                                      *
        * *************************************/
-
-		if (fsm1.state == 0 && S2 && !prevS2 && k < 6)
-		{
-			fsm1.new_state = 1;
-		}
-		else if (fsm1.state == 1 && S2 && !prevS2)
-		{
-			fsm1.new_state = 2;
-			k++;
-			Serial.print("Ganhou 2s");
-			flash_time = 0;
-			fsm2.tes = millis();
-			fsm2.tis = 0;
-		}
-		else if (fsm1.state == 1 && fsm1.tis > 500)
-		{
-			fsm1.new_state = 0;
-		}
-		else if (fsm1.state == 2 && 1)
-		{
-			fsm1.new_state = 0;
+	  	// Passei para dentro desta condição para ele não evoluir quando se encontra em config
+	  	if(fsm4.state == 0){
+			if (fsm1.state == 0 && S2 && !prevS2 && k < 6)
+			{
+				fsm1.new_state = 1;
+			}
+			else if (fsm1.state == 1 && S2 && !prevS2)
+			{
+				fsm1.new_state = 2; // volta ao inicio
+				k++; // aumenta k
+				Serial.print("Ganhou 2s"); // 
+				flash_time = 0; // reinicia tempos
+				fsm2.tes = millis();
+				fsm2.tis = 0;
+				brilho = 255;  // tambem reiniciamos o brilho
+			}
+			else if (fsm1.state == 1 && fsm1.tis > 500)
+			{
+				fsm1.new_state = 0;
+			}
+			else if (fsm1.state == 2 && 1)
+			{
+				fsm1.new_state = 0;
+			}
 		}
 
 		/***************************************
@@ -210,32 +216,33 @@ void loop()
 			{ // voltar ao funcionamento
 				fsm2.new_state = 1;
 			}
-			else if (fsm2.state == 2 && !S2 && prevS2 && fsm2.tis > 500)
+			else if (fsm2.state == 2 && !S2 && fsm2.tis > 500)
 			{ //piscar quando em pausa
 				fsm2.new_state = 3;
 			}
-			else if (fsm2.state == 3 && fsm2.tis > 500 && !S2 && prevS2)
+			else if (fsm2.state == 3 && fsm2.tis > 500 && !S2)
 			{ // piscar quando em pausa
 				fsm2.new_state = 2;
 			}
 			else if (fsm2.state == 1 && (flash_time + fsm2.tis) >= blink_rate)
 			{ // cronómetro a funcionar
-				k--;
-				flash_time = 0;
-				fsm2.tes = millis();
+				k--; // menos 1 led
+				flash_time = 0; // flash time a 0
+				fsm2.tes = millis(); // vamos reiniciar também a contagem de tempo no ciclo
 				fsm2.tis = 0;
-				brilho = 255;
+				brilho = 255; // vamos também reiniciar o brilho para o caso de estar no modo j==2
 			}
 			else if (k == 0 && fsm2.state == 1)
-			{
+			{ // acabou a contagem
 				fsm2.new_state = 4;
-				flash_time2 = 0;
+				flash_time2 = 0; // modo de terminação alternativo
 				Serial.print("Tempo terminou...\n");
 			}
 			else if (fsm2.state == 4 && S1 && !prevS1)
 			{
 				k = 6;
 				fsm2.new_state = 0;
+				brilho = 255;
 			}
 		}
 
@@ -272,7 +279,7 @@ void loop()
 		else if (fsm3.state == 3 && fsm3.tis > 3000)
 		{ // SAI do menu
 			fsm3.new_state = 0;
-			fsm4.new_state = 0; // Desliga automaticamente o menu de configuração
+			//fsm4.new_state = 0; // Desliga automaticamente o menu de configuração
 		}
 		else if (fsm3.state == 3 && !S1)
 		{ // não foi long click para sair
@@ -304,11 +311,13 @@ void loop()
 		}
 		else if (fsm4.state == 3 && S1 && !prevS1)
 		{ //
+			Serial.print("Configurar interval...\n");
 			fsm4.new_state = 1;
 		}
 		else if ((fsm4.state == 1 || fsm4.state == 2 || fsm4.state == 3) && fsm3.state == 0)
 		{
 			fsm4.new_state = 0;
+			brilho = 255; // quando sai do modo de config metemos o brilho a toda a intensidade
 		}
 
 		if (fsm4.state == 1 && S2 && !prevS2)
@@ -316,10 +325,21 @@ void loop()
 			if (i < 3)
 			{
 				i++;
+				fsm4.tes = millis(); // é preciso estas duas linhas para reiniciar
+				fsm4.tis = 0; // reiniciamos o tis de cada vez que troca
+				brilho = 255; // reiniciar brilho
 			}
-			else
+			else{
 				i = 0;
+				fsm4.tes = millis(); // é preciso estas duas linhas para reiniciar
+				fsm4.tis = 0; // reiniciamos o tis de cada vez que troca
+				brilho = 255; // reiniciar brilho
+			} 
+
 			blink_rate = gama_intervalos[i]; // atualiza o tempo da ampulheta
+			if (j==2){
+				fade_amount = ((blink_rate / 10) / 256) + 1; //tambem atualizamos o fade quando mudamos o blink rate
+			}
 		}
 		else if (fsm4.state == 2 && S2 && !prevS2)
 		{
@@ -329,6 +349,22 @@ void loop()
 			}
 			else
 				j = 0;
+			if(j==2){
+				brilho = 255; // reiniciar brilho
+				fade_amount = ((blink_rate / 10) / 256) + 1; // atualizamos o fade
+				Serial.print(fade_amount);
+			}
+			//if(j == 2){  // ilustrar fade com o LED7
+			//	brilho -= fade_amount; // reduz luminosidade
+			//	if (brilho < 0)
+			//	{
+			//		brilho = 0; //não vai a valores negativos
+			//	}
+			//	analogWrite(LED7, brilho); // ilustrar
+			//}
+			if(j == 1){
+
+			}
 		}
 		else if (fsm4.state == 3 && S2 && !prevS2)
 		{
@@ -350,6 +386,17 @@ void loop()
         } else if(fsm5.state == 2 && fsm5.tis >200){
             fsm5.new_state = 1;
         }
+
+        if(fsm6.state == 0 && (fsm2.state == 1 && j == 1 && fsm4.state == 0)){
+            fsm6.new_state = 1;
+        } else if((fsm6.state == 1 || fsm6.state == 2) && ((fsm2.tis + flash_time > blink_rate) || fsm4.state != 0)){
+            fsm6.new_state = 0;
+        } else if(fsm6.state == 1 && fsm6.tis > 200){
+            fsm6.new_state = 2;
+        } else if(fsm6.state == 2 && fsm6.tis >200){
+            fsm6.new_state = 1;
+        }
+
 		/****************************************
        *                                      *
        *        UPDATE THE STATES             *
@@ -362,6 +409,7 @@ void loop()
 		set_state(fsm3, fsm3.new_state);
 		set_state(fsm4, fsm4.new_state);
         set_state(fsm5, fsm5.new_state);
+		set_state(fsm6, fsm6.new_state);
 
 		// Actions set by the current state of the first state machine
 
@@ -377,6 +425,8 @@ void loop()
        *                                      *
        * *************************************/
 
+	   // -------->>>>>>> PODIA METER TODAS AS ATIVAÇÕES RELATIVAS AO LED_7 DENTRO DUM IF QUE DISSESSE RESPEITO AO MENU DE CONFIG
+
 		// A more compact way
 		//if(fsm4.state == 0){
 
@@ -386,14 +436,17 @@ void loop()
          *                                       *
          * **************************************/
 
+		// os leds estarão ligados se estiverem nos modos de contar ou de pausa e o k ainda estiver "válido"
 		LED_1 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 1 && (fsm4.state == 0));
 		LED_2 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 2 && (fsm4.state == 0));
 		LED_3 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 3 && (fsm4.state == 0));
 		LED_4 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 4 && (fsm4.state == 0));
 		LED_5 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 5 && (fsm4.state == 0));
 		LED_6 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 6 && (fsm4.state == 0));
-		LED_7 = ((fsm2.state == 4) && (modo == 0));
+		LED_7 = ((fsm2.state == 4) && (modo == 0)); // para ligar tanto em caso de finalizar como em caso de representação da config
 		//}
+		Serial.print(" LED_7: ");
+		Serial.print(LED_7);
 
         /*****************************************
          *                                       *
@@ -401,7 +454,7 @@ void loop()
          *                                       *
          * **************************************/
 
-		if (fsm2.state == 4 && modo == 1)
+		if ((fsm2.state == 4 && modo == 1) || (fsm4.state == 3 && modo == 1)) // vamos meter o modo a funcionar também quando está no menu de config
 		{
 			if (fsm2.tis - flash_time2 > 100 && k2 > 0)
 			{
@@ -437,9 +490,10 @@ void loop()
          *                                       *
          * **************************************/
 
-		if (j == 2 && fsm2.state == 1)
+		// se modo fade e estivermos a contar ou no menu de config (para ilustrar)
+		if (j == 2 && (fsm2.state == 1 || fsm4.state == 2))
 		{
-			Serial.println(brilho);
+			// Serial.println(brilho);
 			brilho -= fade_amount; // reduz luminosidade
 			if (brilho < 0)
 			{
@@ -453,38 +507,53 @@ void loop()
          *              MODOS 1 E 3              *
          *                                       *
          * **************************************/
-		if (j == 2 && k == 1 && fsm2.state == 1)
+
+		// a menos que esteja a contar e no menu fade, ele faz digital writes normais
+		if(j==1 && fsm2.state == 1){ // este ciclo basicamente altera a condição dos LED_i e sobrepoem se à anterior qd j == 1
+			if((fsm2.tis + flash_time)>blink_rate/2){
+				if(k==1) LED_1 = (fsm6.state == 1 && k == 1 && (fsm4.state == 0));
+				if(k==2) LED_2 = (fsm6.state == 1 && k == 2 && (fsm4.state == 0));
+				if(k==3) LED_3 = (fsm6.state == 1 && k == 3 && (fsm4.state == 0));
+				if(k==4) LED_4 = (fsm6.state == 1 && k == 4 && (fsm4.state == 0));
+				if(k==5) LED_5 = (fsm6.state == 1 && k == 5 && (fsm4.state == 0));
+				if(k==6) LED_6 = (fsm6.state == 1 && k == 6 && (fsm4.state == 0));
+			}
+		}
+
+		// a menos que esteja a contar e no menu fade, ele faz digital writes normais
+		if ((j == 2) && (k == 1) && (fsm2.state == 1))
 		{
 			analogWrite(LED1, brilho);
 		}
-		else if(j==0)
-		{
+		else
+		{	
+			Serial.println("Estou aqui");
 			digitalWrite(LED1, LED_1);
 		}
 
-		if (j == 2 && k == 2 && fsm2.state == 1)
+		if ((j == 2) && (k == 2) && (fsm2.state == 1))
 		{
 			analogWrite(LED2, brilho);
 		}
-		else if(j==0)
+		else
 		{
 			digitalWrite(LED2, LED_2);
 		}
 
-		if (j == 2 && k == 3 && fsm2.state == 1)
+		if ((j == 2) && (k == 3) && (fsm2.state == 1))
 		{
 			analogWrite(LED3, brilho);
 		}
-		else if(j==0)
+		else
 		{
 			digitalWrite(LED3, LED_3);
 		}
 
-		if (j == 2 && k == 4 && fsm2.state == 1)
+		if ((j == 2) && (k == 4) && (fsm2.state == 1))
 		{
 			analogWrite(LED4, brilho);
 		}
-		else if(j==0)
+		else
 		{
 			digitalWrite(LED4, LED_4);
 		}
@@ -493,24 +562,42 @@ void loop()
 		{
 			analogWrite(LED5, brilho);
 		}
-		else if(j==0)
+		else
 		{
 			digitalWrite(LED5, LED_5);
 		}
 
-		if ((j == 2) && (k == 6) && fsm2.state == 1)
+		if ((j == 2) && (k == 6) && (fsm2.state == 1))
 		{
 			// Serial.print("Fade: ");
 			// Serial.println(brilho);
 			analogWrite(LED6, brilho);
 		}
-		else if(j==0)
+		else
 		{
 			digitalWrite(LED6, LED_6);
 		}
 
-		digitalWrite(LED7, LED_7);
-
+		
+		if(fsm3.state!=0){ // enquanto estiver no menu de conf estas configurações podem ser ativadas
+			// Código para o LED7 representar o fade enquanto se está no menu de config
+			if((j==2) && fsm4.state == 2){
+				analogWrite(LED7, brilho);
+			}
+			if(fsm4.state == 1 && fsm4.tis < blink_rate){ // led_7 a ilustrar o tempo de config
+				LED_7 = 1; // vamos impôr isto quando estivermos a ilustrar, depois segue o funcionamento normal que naturalmente será 0
+				digitalWrite(LED7, LED_7);
+			}
+			if(fsm4.state == 3 && modo == 0){
+				LED_7 = 1;
+				digitalWrite(LED7, LED_7);
+			} 
+			if(fsm3.state == 3){ // quando vai sair do menu
+				LED_7 = 0;
+				digitalWrite(LED7, LED_7); // vou impôr a 0 pq acho que há algo a bloqueá-lo de voltar a 0
+			} else digitalWrite(LED7,LED_7);
+		} else digitalWrite(LED7, LED_7);	
+		
         /********************************************************
          *                                                      *
          *    SAÍDAS NO CASO DE ESTAR NO MENU DE CONFIGURAÇÃO   *
@@ -526,6 +613,11 @@ void loop()
             digitalWrite(LED3, LED_3);
         }
 
+		/**********************************************************
+		 *                                                        *
+		 *       LED 7 EM REPRESENTAÇÃO DAS OPÇÕES DE CONFIG      *
+		 *                                                        *
+		 * *******************************************************/
 
 		// Debug using the serial port
 		// if (now - last_cycle1 > interval_print) {
@@ -537,14 +629,14 @@ void loop()
        *                                      *
        * *************************************/
 
-		Serial.print(" fsm2.state: ");
-		Serial.print(fsm2.state);
-
-		Serial.print(" fsm3.state: ");
-		Serial.print(fsm3.state);
+		Serial.print(" LED_7: ");
+		Serial.print(LED_7);
 
 		Serial.print(" fsm4.state: ");
 		Serial.print(fsm4.state);
+
+		Serial.print(" fsm3.state: ");
+		Serial.print(fsm3.state);
 
 		Serial.print(" Modo: ");
 		Serial.print(modo);
@@ -552,11 +644,11 @@ void loop()
 		Serial.print(" Blink Rate: ");
 		Serial.print(blink_rate);
 
-		Serial.print(" S2: ");
-		Serial.print(S2);
+		Serial.print(" fsm2.state: ");
+		Serial.print(fsm2.state);
 
-		Serial.print(" S1: ");
-		Serial.print(S1);
+		Serial.print(" LED_6: ");
+		Serial.print(LED_6);
 
 		Serial.print(" k: ");
 		Serial.print(k);
