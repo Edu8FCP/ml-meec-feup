@@ -114,7 +114,9 @@ void setup()
 	k2 = 6; // FINAL ALTERNATIVO
 	j = 0; // FADE
 	brilho = 255; // INTENSIDADE DE BRILHO
-	fade_amount = ((blink_rate / 10) / 256) + 1; // VARIABILIDADE DO BRILHO
+	fade_amount = (256/(blink_rate/10)) + 1; // VARIABILIDADE DO BRILHO
+	//fade_amount=(blink_rate/10);
+
 }
 
 /*********************************
@@ -338,21 +340,23 @@ void loop()
 
 			blink_rate = gama_intervalos[i]; // atualiza o tempo da ampulheta
 			if (j==2){
-				fade_amount = ((blink_rate / 10) / 256) + 1; //tambem atualizamos o fade quando mudamos o blink rate
+				fade_amount = (256/(blink_rate/10)) + 1; //tambem atualizamos o fade quando mudamos o blink rate
+				brilho = 255;
 			}
 		}
 		else if (fsm4.state == 2 && S2 && !prevS2)
 		{
 			if (j < 2)
 			{
+				fsm4.tes = millis(); // é preciso estas duas linhas para reiniciar
+				fsm4.tis = 0; // reiniciamos o tis de cada vez que troca
 				j++;
 			}
 			else
 				j = 0;
 			if(j==2){
 				brilho = 255; // reiniciar brilho
-				fade_amount = ((blink_rate / 10) / 256) + 1; // atualizamos o fade
-				Serial.print(fade_amount);
+				fade_amount = (256/(blink_rate/10)) + 1; // atualizamos o fade
 			}
 			//if(j == 2){  // ilustrar fade com o LED7
 			//	brilho -= fade_amount; // reduz luminosidade
@@ -362,9 +366,6 @@ void loop()
 			//	}
 			//	analogWrite(LED7, brilho); // ilustrar
 			//}
-			if(j == 1){
-
-			}
 		}
 		else if (fsm4.state == 3 && S2 && !prevS2)
 		{
@@ -445,8 +446,6 @@ void loop()
 		LED_6 = ((fsm2.state == 1 || fsm2.state == 2) && k >= 6 && (fsm4.state == 0));
 		LED_7 = ((fsm2.state == 4) && (modo == 0)); // para ligar tanto em caso de finalizar como em caso de representação da config
 		//}
-		Serial.print(" LED_7: ");
-		Serial.print(LED_7);
 
         /*****************************************
          *                                       *
@@ -454,7 +453,7 @@ void loop()
          *                                       *
          * **************************************/
 
-		if ((fsm2.state == 4 && modo == 1) || (fsm4.state == 3 && modo == 1)) // vamos meter o modo a funcionar também quando está no menu de config
+		if (fsm2.state == 4 && modo == 1) // vamos meter o modo a funcionar também quando está no menu de config
 		{
 			if (fsm2.tis - flash_time2 > 100 && k2 > 0)
 			{
@@ -491,7 +490,7 @@ void loop()
          * **************************************/
 
 		// se modo fade e estivermos a contar ou no menu de config (para ilustrar)
-		if (j == 2 && (fsm2.state == 1 || fsm4.state == 2))
+		if (j == 2 && (fsm2.state == 1))
 		{
 			// Serial.println(brilho);
 			brilho -= fade_amount; // reduz luminosidade
@@ -501,10 +500,67 @@ void loop()
 			}
 		}
 
+		// SÓ ENTRA AQUI SE ESTIVER NO MENU DE CONFIG
+		if(fsm3.state==2){ // enquanto estiver no menu de conf estas configurações podem ser ativadas
+			// Código para o LED7 representar o fade enquanto se está no menu de config
+			if((j==2) && fsm4.state == 2){
+								// Serial.println(brilho);
+				brilho -= fade_amount; // reduz luminosidade
+				if (brilho < 0)
+				{
+					brilho = 0; //não vai a valores negativos
+				}
+				analogWrite(LED7, brilho);
+			}
+			else if(fsm4.state == 1 && fsm4.tis < blink_rate){ // led_7 a ilustrar o tempo de config
+				LED_7 = 1; // vamos impôr isto quando estivermos a ilustrar, depois segue o funcionamento normal que naturalmente será 0
+				analogWrite(LED7, LED_7*255);
+			}
+			else if(fsm4.state == 3 && modo == 0){
+				LED_7 = 1;
+				analogWrite(LED7, LED_7*255);
+			}			
+			else if ((fsm4.state == 3 && modo == 1)) // vamos meter o modo a funcionar também quando está no menu de config
+			{
+				LED_7 = 0;
+				analogWrite(LED7, LED_7*255);
+				if (fsm4.tis - flash_time2 > 100 && k2 > 0)
+				{
+					flash_time2 = fsm4.tis; // aumentamos flash_time2 de 100 em 100 ms
+					k2--;
+				}
+				else if (k2 == 0)
+				{
+					k2 = 6;
+				}
+				LED_1 = (k2 == 1);
+				LED_2 = (k2 == 2);
+				LED_3 = (k2 == 3);
+				LED_4 = (k2 == 4);
+				LED_5 = (k2 == 5);
+				LED_6 = (k2 == 6);
+			}
+			else if(j==1 && fsm4.state == 2 && fsm4.tis < blink_rate){ // este ciclo basicamente altera a condição dos LED_i e sobrepoem se à anterior qd j == 1
+				LED_7 = 1;
+				if((fsm4.tis)>blink_rate/2){
+					LED_7 = (fsm5.state == 1);
+				}
+				analogWrite(LED7, LED_7*255);
+			}
+			else{
+				LED_7 = 0 ;
+				analogWrite(LED7, LED_7*255);
+			}
+			} else if(fsm3.state == 3){
+			brilho = 255; // repoe brilho quando sai do menu
+			LED_7 = 0;
+			analogWrite(LED7,LED_7*255);
+		} 
+		
 		/*****************************************
          *                                       *
          *  PASSAGEM DOS VALORES PARA AS SAÍDAS  *
-         *              MODOS 1 E 3              *
+         *              MODOS 1, 2 E 3           *
          *                                       *
          * **************************************/
 
@@ -518,7 +574,7 @@ void loop()
 				if(k==5) LED_5 = (fsm6.state == 1 && k == 5 && (fsm4.state == 0));
 				if(k==6) LED_6 = (fsm6.state == 1 && k == 6 && (fsm4.state == 0));
 			}
-		}
+		}		
 
 		// a menos que esteja a contar e no menu fade, ele faz digital writes normais
 		if ((j == 2) && (k == 1) && (fsm2.state == 1))
@@ -527,8 +583,8 @@ void loop()
 		}
 		else
 		{	
-			Serial.println("Estou aqui");
-			digitalWrite(LED1, LED_1);
+			//Serial.println("Estou aqui");
+			analogWrite(LED1, LED_1*255);
 		}
 
 		if ((j == 2) && (k == 2) && (fsm2.state == 1))
@@ -537,7 +593,7 @@ void loop()
 		}
 		else
 		{
-			digitalWrite(LED2, LED_2);
+			analogWrite(LED2, LED_2*255);
 		}
 
 		if ((j == 2) && (k == 3) && (fsm2.state == 1))
@@ -546,7 +602,7 @@ void loop()
 		}
 		else
 		{
-			digitalWrite(LED3, LED_3);
+			analogWrite(LED3, LED_3*255);
 		}
 
 		if ((j == 2) && (k == 4) && (fsm2.state == 1))
@@ -555,7 +611,7 @@ void loop()
 		}
 		else
 		{
-			digitalWrite(LED4, LED_4);
+			analogWrite(LED4, LED_4*255);
 		}
 
 		if ((j == 2) && (k == 5) && (fsm2.state == 1))
@@ -564,7 +620,9 @@ void loop()
 		}
 		else
 		{
-			digitalWrite(LED5, LED_5);
+			//Serial.print("Estou aqui");
+			//Serial.print(LED_5);
+			analogWrite(LED5, LED_5*255);
 		}
 
 		if ((j == 2) && (k == 6) && (fsm2.state == 1))
@@ -575,28 +633,14 @@ void loop()
 		}
 		else
 		{
-			digitalWrite(LED6, LED_6);
+			analogWrite(LED6, LED_6*255);
 		}
 
-		
-		if(fsm3.state!=0){ // enquanto estiver no menu de conf estas configurações podem ser ativadas
-			// Código para o LED7 representar o fade enquanto se está no menu de config
-			if((j==2) && fsm4.state == 2){
-				analogWrite(LED7, brilho);
-			}
-			if(fsm4.state == 1 && fsm4.tis < blink_rate){ // led_7 a ilustrar o tempo de config
-				LED_7 = 1; // vamos impôr isto quando estivermos a ilustrar, depois segue o funcionamento normal que naturalmente será 0
-				digitalWrite(LED7, LED_7);
-			}
-			if(fsm4.state == 3 && modo == 0){
-				LED_7 = 1;
-				digitalWrite(LED7, LED_7);
-			} 
-			if(fsm3.state == 3){ // quando vai sair do menu
-				LED_7 = 0;
-				digitalWrite(LED7, LED_7); // vou impôr a 0 pq acho que há algo a bloqueá-lo de voltar a 0
-			} else digitalWrite(LED7,LED_7);
-		} else digitalWrite(LED7, LED_7);	
+
+		 // --->>> MODO EM FUNCIONAMENTO BASE
+		if(fsm4.state == 0){
+			analogWrite(LED7, LED_7*255);
+		}
 		
         /********************************************************
          *                                                      *
@@ -604,13 +648,14 @@ void loop()
          *                                                      *
          * *****************************************************/
 
+		// SÓ ENTRA AQUI SE ESTIVER NO MENU DE CONFIG
         if(fsm4.state != 0){
             LED_1 = ((fsm4.state == 1) && (fsm5.state == 1)); 
             LED_2 = ((fsm4.state == 2) && (fsm5.state == 1)); 
             LED_3 = ((fsm4.state == 3) && (fsm5.state == 1)); 
-            digitalWrite(LED1, LED_1);
-            digitalWrite(LED2, LED_2);
-            digitalWrite(LED3, LED_3);
+           	analogWrite(LED1, LED_1*255);
+            analogWrite(LED2, LED_2*255);
+            analogWrite(LED3, LED_3*255);
         }
 
 		/**********************************************************
@@ -638,17 +683,17 @@ void loop()
 		Serial.print(" fsm3.state: ");
 		Serial.print(fsm3.state);
 
-		Serial.print(" Modo: ");
-		Serial.print(modo);
-
-		Serial.print(" Blink Rate: ");
+		Serial.print(" blink_rate: ");
 		Serial.print(blink_rate);
+
+		Serial.print(" modo: ");
+		Serial.print(modo);
 
 		Serial.print(" fsm2.state: ");
 		Serial.print(fsm2.state);
 
-		Serial.print(" LED_6: ");
-		Serial.print(LED_6);
+		Serial.print(" LED_4: ");
+		Serial.print(LED_4);
 
 		Serial.print(" k: ");
 		Serial.print(k);
