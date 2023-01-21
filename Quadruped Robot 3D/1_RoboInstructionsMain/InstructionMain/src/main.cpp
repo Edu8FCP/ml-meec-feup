@@ -5,7 +5,12 @@
 *  Enviar Ordens para o PICO  *
 *******************************/
 // Materials
+// PI PICO - Vcc - pino 36; Ground - 3,8,13,18,23,28,33,38
 // terminal
+// Wifi-connection
+// IMU
+// Sonar
+// Servos SG90 (x8)
 
 /****************
 *  BIBLIOTECAS  *
@@ -21,31 +26,97 @@
 
 #include "sonar.h"
 
+#include "imu.h"
+
+#include "motores.h"
+
 /***********
 *  MACROS  *
 ************/
 
 #define SSID "NetworkName"
 #define PASS "NetworkPass"
+#define CYCLE_INTERVAL 10
 
 /***********************
 *  PINO'S CONNECTIONS  *
 ************************/
 
-#define LED1 1
+#define SDA_PIN 20 // IMU
+#define SCL_PIN 21
+#define ECHO_PIN 7 // SONAR
+#define TRIG_PIN 8
+#define LED1 1 // LEDS
 #define LED2 2
+// BUTTONS
+// MOTORES
+
+/*********************
+* MÁQUINA DE ESTADOS *
+**********************/
+
+typedef struct {
+  int state, new_state;
+
+  // tes - time entering state
+  // tis - time in state
+  unsigned long tes, tis;
+} fsm_t;
 
 /**************
 *  VARIÁVEIS  *
 ***************/
 
-float distance, prev_distance;
+// Sonar
+float Distance;
+float DistanceAverage[5];
+int filtro, SomaTotal = 0;
+float SpeedOfSound, Temp, Time;
 
-int LED_state;
+// Controlo do Ciclo
 unsigned long interval;
 unsigned long currentMicros, previousMicros;
 int loop_count;
+
+// Wireless Mode
 commands_wifi wifi_commands;
+
+//IMU
+float X_Angle, Y_Angle;
+
+// Controlo de mostradores/movimento
+bool FlagIMU = false;
+bool FlagSonar = false;
+bool FlagMotores = false;
+bool FlagEsquerda = false;
+bool FlagDireita = false;
+
+// Motores
+float motores[8][2];
+float posicao[8][2];
+
+/*******************************
+*  FUNÇÕES GENÉRICAS DE APOIO  *
+********************************/
+
+void PrintController(bool FlagIMU, bool FlagSonar, bool FlagMovimento){
+  if(FlagIMU || FlagSonar || FlagMotores){
+    Serial.print("Loop Count: ");
+    Serial.print(loop_count);
+  }
+  
+  if(FlagIMU){
+    Serial.print("X_Angle: ");
+    Serial.print(X_Angle);
+    Serial.print(" Y_Angle: ");
+    Serial.println(Y_Angle);
+  }
+
+  if(FlagSonar){
+    Serial.print("Distance (cm): ");
+    Serial.print(Distance);
+  }
+}
 
 /*********************************
 *  Network Connection w/ MACROS  *
@@ -71,30 +142,67 @@ void process_command(char command, float value)
 {
   if (command == 'A' || command == 'a') {  // The 'L' command sets the LED_intensity to the value that follows
     // STOP MOTION
-    //if (LED_intensity > 100) LED_intensity = 100;  // Avoid "impossible" values for LED_intensity
+    FlagMotores = false;
 
   } else if (command == 'B' || command == 'b') { 
     // MOVE IT! :) Shake that ass, SpiderPig!
+    FlagMotores = true;
 
   } else if (command == 'C' || command == 'c') { 
     // TURN RIGHT!
+    FlagDireita = true;
+    FlagEsquerda = false;
+    FlagMotores = false;
 
   } else if (command == 'D' || command == 'd') { 
     // TURN LEFT!
+    FlagEsquerda = true;
+    FlagDireita = false;
+    FlagMotores = false;
 
   } else if (command == 'E' || command == 'e') { 
-    // SHOW DISTANCE
+    // STOP TURN, otherwise you'll get dizzy
+    FlagDireita = false;
+    FlagEsquerda = false;
 
   } else if (command == 'F' || command == 'f') { 
-    // STOP TO SHOW, I'M ENOUGH OF YOU...
+    // SHOW DISTANCE
+    FlagSonar = true;
 
   } else if (command == 'G' || command == 'g') { 
-    // SHOW ME WHERE YOU WENT...
+    // STOP TO SHOW, I'M ENOUGH OF YOU...
+    FlagSonar = false;
 
   } else if (command == 'H' || command == 'h') { 
+    // SHOW ME WHERE YOU WENT...
+    FlagIMU = true;
+
+  } else if (command == 'I' || command == 'i') { 
     // OK GOOD WORK, YOU ACHIEVED YOUR 10 THOUSAND STEPS, TODAY!
+    FlagIMU = false;
 
   } // Put here more commands... if you want, of course :)
+}
+
+float ReadSonar(float Speed, float Temp, float Time){
+  digitalWrite(TRIG_PIN, LOW); // TODO - tirar estes delays
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  // function that reads a pulse (if HIGH waits for LOW and vice-versa)
+  // works well for pulses between 10us e 3min
+  int Duration = pulseIn(ECHO_PIN, HIGH);
+
+  if(Duration==0){
+    Serial.println("Warning: no pulse from sensor");
+  } 
+
+  float Speed = CalcSpeed(Temp);
+  float Distance = CalcDist(Speed, Time);
+
+  return Distance;
 }
 
 /**********
@@ -105,14 +213,18 @@ void setup()
 {
   interval = 40 * 1000;
 
-  wifi_commands.init(process_command);
+  // Inicializações de plataformas
   Serial.begin(115200);
-
   initWiFi();
 
-}
+  wifi_commands.init(process_command);
 
-#define CYW43_WL_GPIO_LED_PIN 0
+  // Inicialização de variáveis
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  Temp = 20;
+
+}
 
 /*********************
 *  LOOP DE CONTROLO  *
@@ -132,19 +244,23 @@ void loop()
 
   }  
   
-  // Controlo do ciclo
+  // Contagem de controlo do ciclo
   currentMicros = micros();
 
   // THE Control Loop
-  if (currentMicros - previousMicros >= interval) {
+  if (currentMicros - previousMicros >= CYCLE_INTERVAL) {
     previousMicros = currentMicros;
 
-    // Toggle builtin LED    
+    // Loop Count 
     loop_count++;
-    if (loop_count > 5) {
-      LED_state = !LED_state;
-      cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, LED_state);
-      loop_count = 0;
-    }
+
+    // State Machines Process
+    Distance = ReadSonar(SpeedOfSound, Temp, Time);
+    ReadIMU(X_Angle, Y_Angle);
+
+    // Tratamento dos Dados
+
+    // Imprimir no Terminal
+    PrintController(FlagIMU, FlagSonar, FlagMotores);
   }
 }

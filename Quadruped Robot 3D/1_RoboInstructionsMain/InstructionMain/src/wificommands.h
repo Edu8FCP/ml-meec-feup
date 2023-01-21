@@ -1,4 +1,3 @@
-
 #ifndef WIFI_H
 #define WIFI_H
 
@@ -18,7 +17,7 @@ typedef enum {  // Estrutura que funciona entre espera/a ler
 
 
 class commands_wifi
-{
+{ 
   public:
     // Pointer to the function that processes commands
     void (*process_command)(char command, float value);
